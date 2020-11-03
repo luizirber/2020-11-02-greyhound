@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -7,12 +8,20 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use log::info;
 use nohash_hasher::BuildNoHashHasher;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::{max_hash_for_scaled, KmerMinHash};
 use sourmash::sketch::Sketch;
 use structopt::StructOpt;
 
-type RevIndex = HashMap<u64, HashSet<usize>, BuildNoHashHasher<u64>>;
+type HashToIdx = HashMap<u64, HashSet<usize>, BuildNoHashHasher<u64>>;
+
+#[derive(Serialize, Deserialize)]
+struct RevIndex {
+    hash_to_idx: HashToIdx,
+    sig_files: Vec<PathBuf>,
+}
+
 type SigCounter = counter::Counter<usize>;
 
 #[derive(StructOpt, Debug)]
@@ -22,7 +31,7 @@ enum Cli {
         #[structopt(parse(from_os_str))]
         query_path: PathBuf,
 
-        /// List of reference signatures
+        /// Precomputed index or list of reference signatures
         #[structopt(parse(from_os_str))]
         siglist: PathBuf,
 
@@ -43,8 +52,8 @@ enum Cli {
         output: Option<PathBuf>,
 
         /// Is the index a list of signatures?
-        #[structopt(parse(from_os_str), short = "i", long = "index")]
-        index: Option<PathBuf>,
+        #[structopt(long = "--from-file")]
+        from_file: bool,
     },
     Index {
         /// The path for output
@@ -67,15 +76,17 @@ enum Cli {
 
 fn load_revindex<P: AsRef<Path>>(
     index_path: P,
-    query: Option<&KmerMinHash>,
+    queries: Option<&[KmerMinHash]>,
 ) -> Result<RevIndex, Box<dyn std::error::Error>> {
     // TODO: avoid loading full revindex if query != None
     let (rdr, _) = niffler::from_path(index_path)?;
     let mut revindex: RevIndex = serde_json::from_reader(rdr)?;
 
-    if let Some(q) = query {
-        let hashes: HashSet<u64> = q.iter_mins().cloned().collect();
-        revindex.retain(|hash, _| hashes.contains(hash));
+    if let Some(qs) = queries {
+        for q in qs {
+            let hashes: HashSet<u64> = q.iter_mins().cloned().collect();
+            revindex.hash_to_idx.retain(|hash, _| hashes.contains(hash));
+        }
     }
     Ok(revindex)
 }
@@ -84,11 +95,11 @@ fn build_revindex(
     search_sigs: &[PathBuf],
     template: &Sketch,
     threshold: usize,
-    query: Option<&KmerMinHash>,
+    queries: Option<&[KmerMinHash]>,
 ) -> RevIndex {
     let processed_sigs = AtomicUsize::new(0);
 
-    search_sigs
+    let hash_to_idx = search_sigs
         .par_iter()
         .enumerate()
         .filter_map(|(dataset_id, filename)| {
@@ -107,28 +118,38 @@ fn build_revindex(
             }
             let search_mh = search_mh.unwrap();
 
-            let (matched_hashes, intersection) = if let Some(q) = query {
-                q.intersection(search_mh).unwrap()
+            let mut hash_to_idx = HashToIdx::with_hasher(BuildNoHashHasher::default());
+            if let Some(qs) = queries {
+                for query in qs {
+                    let (matched_hashes, intersection) = query.intersection(search_mh).unwrap();
+                    if !matched_hashes.is_empty() || intersection > threshold as u64 {
+                        matched_hashes.into_iter().for_each(|hash| {
+                            let mut dataset_ids = HashSet::new();
+                            dataset_ids.insert(dataset_id);
+                            hash_to_idx.insert(hash, dataset_ids);
+                        });
+                    }
+                }
             } else {
                 let matched = search_mh.mins();
                 let size = matched.len() as u64;
-                (matched, size)
+                if !matched.is_empty() || size > threshold as u64 {
+                    matched.into_iter().for_each(|hash| {
+                        let mut dataset_ids = HashSet::new();
+                        dataset_ids.insert(dataset_id);
+                        hash_to_idx.insert(hash, dataset_ids);
+                    });
+                }
             };
 
-            if matched_hashes.is_empty() || intersection < threshold as u64 {
+            if hash_to_idx.is_empty() {
                 None
             } else {
-                let mut revindex: RevIndex = HashMap::with_hasher(BuildNoHashHasher::default());
-                matched_hashes.into_iter().for_each(|hash| {
-                    let mut dataset_ids = HashSet::new();
-                    dataset_ids.insert(dataset_id);
-                    revindex.insert(hash, dataset_ids);
-                });
-                Some(revindex)
+                Some(hash_to_idx)
             }
         })
         .reduce(
-            || HashMap::with_hasher(BuildNoHashHasher::default()),
+            || HashToIdx::with_hasher(BuildNoHashHasher::default()),
             |a, b| {
                 let (small, mut large) = if a.len() > b.len() { (b, a) } else { (a, b) };
 
@@ -141,13 +162,18 @@ fn build_revindex(
 
                 large
             },
-        )
+        );
+    RevIndex {
+        hash_to_idx,
+        sig_files: search_sigs.into(),
+    }
 }
 
 fn build_counter(revindex: &RevIndex, query: Option<&KmerMinHash>) -> SigCounter {
     if let Some(q) = query {
         let hashes: HashSet<u64> = q.iter_mins().cloned().collect();
         revindex
+            .hash_to_idx
             .iter()
             .filter_map(|(hash, ids)| {
                 if hashes.contains(hash) {
@@ -161,6 +187,7 @@ fn build_counter(revindex: &RevIndex, query: Option<&KmerMinHash>) -> SigCounter
             .collect()
     } else {
         revindex
+            .hash_to_idx
             .iter()
             .map(|(_, ids)| ids)
             .flatten()
@@ -209,13 +236,13 @@ fn index<P: AsRef<Path>>(
 }
 
 fn gather<P: AsRef<Path>>(
-    query_path: P,
+    queries_file: P,
     siglist: P,
     ksize: u8,
     scaled: usize,
     threshold_bp: usize,
     output: Option<P>,
-    index: Option<P>,
+    from_file: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading queries");
 
@@ -227,28 +254,8 @@ fn gather<P: AsRef<Path>>(
         .build();
     let template = Sketch::MinHash(template_mh);
 
-    let query_sig = Signature::from_path(query_path)?;
-    let mut query = None;
-    for sig in &query_sig {
-        if let Some(sketch) = sig.select_sketch(&template) {
-            if let Sketch::MinHash(mh) = sketch {
-                query = Some((sig.name(), mh.clone()));
-            }
-        }
-    }
-
-    if query.is_none() {
-        todo!("throw error, couldn't find matching sig")
-    };
-    let query = query.unwrap();
-
-    let threshold = threshold_bp / (query.1.size() * scaled);
-
-    info!("Loaded query signature {}", query.0);
-
-    info!("Loading siglist");
-    let siglist_file = BufReader::new(File::open(siglist)?);
-    let search_sigs: Vec<PathBuf> = siglist_file
+    let queries_paths = BufReader::new(File::open(queries_file)?);
+    let queries_path: Vec<PathBuf> = queries_paths
         .lines()
         .map(|line| {
             let mut path = PathBuf::new();
@@ -256,57 +263,108 @@ fn gather<P: AsRef<Path>>(
             path
         })
         .collect();
-    info!("Loaded {} sig paths in siglist", search_sigs.len());
 
-    // Step 1: filter and prepare a reduced RevIndex and Counter
-    let revindex = if let Some(index) = index {
-        load_revindex(index, Some(&query.1))?
-    } else {
-        build_revindex(&search_sigs, &template, threshold, Some(&query.1))
-    };
-    let mut counter = build_counter(&revindex, None);
-
-    // Step 2: Gather using the RevIndex and Counter
-    let mut match_size = usize::max_value();
-    let mut matches = vec![];
-
-    while match_size > threshold && !counter.is_empty() {
-        let (dataset_id, size) = counter.most_common()[0];
-        match_size = if size >= threshold { size } else { break };
-
-        let mut match_mh = None;
-        let match_path = &search_sigs[dataset_id];
-        let match_sig = &Signature::from_path(&match_path)
-            .unwrap_or_else(|_| panic!("Error processing {:?}", match_path))[0];
-        if let Some(sketch) = match_sig.select_sketch(&template) {
-            if let Sketch::MinHash(mh) = sketch {
-                match_mh = Some(mh);
-            }
-        }
-        let match_mh = match_mh.unwrap();
-        matches.push(match_sig.clone());
-
-        for hash in match_mh.iter_mins() {
-            if let Some(dataset_ids) = revindex.get(hash) {
-                for dataset in dataset_ids {
-                    counter.entry(*dataset).and_modify(|e| {
-                        if *e > 0 {
-                            *e -= 1
-                        }
-                    });
+    let mut queries = vec![];
+    let mut threshold = usize::max_value();
+    for query_path in &queries_path {
+        let query_sig = Signature::from_path(query_path)?;
+        let mut query = None;
+        for sig in &query_sig {
+            if let Some(sketch) = sig.select_sketch(&template) {
+                if let Sketch::MinHash(mh) = sketch {
+                    query = Some(mh.clone());
+                    let t = threshold_bp / (mh.size() * scaled);
+                    threshold = cmp::min(threshold, t);
                 }
             }
         }
-        counter.remove(&dataset_id);
+        if let Some(q) = query {
+            queries.push(q);
+        } else {
+            todo!("throw error, some sigs were not valid")
+        };
     }
 
-    let out: Box<dyn Write + Send> = if let Some(path) = output {
-        Box::new(BufWriter::new(File::create(path).unwrap()))
-    } else {
-        Box::new(std::io::stdout())
-    };
-    serde_json::to_writer(out, &matches)?;
+    info!("Loaded {} query signatures", queries.len());
 
+    // Step 1: filter and prepare a reduced RevIndex for all queries
+    let revindex = if from_file {
+        info!("Loading siglist");
+        let siglist_file = BufReader::new(File::open(siglist)?);
+        let search_sigs: Vec<PathBuf> = siglist_file
+            .lines()
+            .map(|line| {
+                let mut path = PathBuf::new();
+                path.push(line.unwrap());
+                path
+            })
+            .collect();
+        info!("Loaded {} sig paths in siglist", search_sigs.len());
+
+        build_revindex(&search_sigs, &template, threshold, Some(&queries))
+    } else {
+        load_revindex(siglist, Some(&queries))?
+    };
+
+    let outdir: PathBuf = if let Some(p) = output {
+        p.as_ref().into()
+    } else {
+        let mut path = PathBuf::new();
+        path.push("outputs");
+        path
+    };
+    std::fs::create_dir_all(&outdir)?;
+
+    // Step 2: Gather using the RevIndex and a specific Counter for each query
+    for (i, query) in queries.iter().enumerate() {
+        info!("Build counter for query");
+        let mut counter = build_counter(&revindex, Some(&query));
+        let threshold = threshold_bp / (query.size() * scaled);
+
+        info!("Starting gather");
+        let mut match_size = usize::max_value();
+        let mut matches = vec![];
+
+        while match_size > threshold && !counter.is_empty() {
+            let (dataset_id, size) = counter.most_common()[0];
+            match_size = if size >= threshold { size } else { break };
+
+            let mut match_mh = None;
+            let match_path = &revindex.sig_files[dataset_id];
+            let match_sig = &Signature::from_path(&match_path)
+                .unwrap_or_else(|_| panic!("Error processing {:?}", match_path))[0];
+            if let Some(sketch) = match_sig.select_sketch(&template) {
+                if let Sketch::MinHash(mh) = sketch {
+                    match_mh = Some(mh);
+                }
+            }
+            let match_mh = match_mh.unwrap();
+            matches.push(match_sig.clone());
+
+            for hash in match_mh.iter_mins() {
+                if let Some(dataset_ids) = revindex.hash_to_idx.get(hash) {
+                    for dataset in dataset_ids {
+                        counter.entry(*dataset).and_modify(|e| {
+                            if *e > 0 {
+                                *e -= 1
+                            }
+                        });
+                    }
+                }
+            }
+            counter.remove(&dataset_id);
+        }
+
+        info!("Saving {} matches", matches.len());
+        let mut path = outdir.clone();
+        path.push(queries_path[i].file_name().unwrap());
+
+        let out = BufWriter::new(File::create(path).unwrap());
+        serde_json::to_writer(out, &matches)?;
+        info!("Finishing query {:?}", queries_path[i]);
+    }
+
+    info!("Finished");
     Ok(())
 }
 
@@ -321,7 +379,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scaled,
             threshold_bp,
             output,
-            index,
+            from_file,
         } => gather(
             query_path,
             siglist,
@@ -329,7 +387,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scaled,
             threshold_bp,
             output,
-            index,
+            from_file,
         )?,
         Cli::Index {
             output,
