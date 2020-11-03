@@ -110,9 +110,9 @@ fn gather<P: AsRef<Path>>(
             }
             let search_mh = search_mh.unwrap();
 
-            let (matched_hashes, _) = query.1.intersection(search_mh).unwrap();
+            let (matched_hashes, intersection) = query.1.intersection(search_mh).unwrap();
 
-            if matched_hashes.is_empty() {
+            if matched_hashes.is_empty() || intersection < threshold as u64 {
                 None
             } else {
                 let mut revindex: HashMap<u64, HashSet<usize>, BuildNoHashHasher<u64>> =
@@ -165,7 +165,7 @@ fn gather<P: AsRef<Path>>(
             }
         }
         let match_mh = match_mh.unwrap();
-        matches.push(match_path);
+        matches.push(match_sig.clone());
 
         for hash in match_mh.iter_mins() {
             if let Some(dataset_ids) = revindex.get(hash) {
@@ -181,7 +181,12 @@ fn gather<P: AsRef<Path>>(
         counter.remove(&dataset_id);
     }
 
-    dbg!(&matches, matches.len());
+    let out: Box<dyn Write + Send> = if let Some(path) = output {
+        Box::new(BufWriter::new(File::create(path).unwrap()))
+    } else {
+        Box::new(std::io::stdout())
+    };
+    serde_json::to_writer(out, &matches)?;
 
     Ok(())
 }
