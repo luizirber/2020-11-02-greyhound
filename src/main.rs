@@ -326,7 +326,7 @@ fn gather<P: AsRef<Path>>(
     let refsigs = if preload {
         revindex
             .sig_files
-            .iter()
+            .par_iter()
             .map(|ref_path| {
                 Signature::from_path(&ref_path)
                     .unwrap_or_else(|_| panic!("Error processing {:?}", ref_path))
@@ -396,7 +396,7 @@ fn gather<P: AsRef<Path>>(
                 }
             }
             let match_mh = match_mh.unwrap();
-            matches.push(match_sig.clone());
+            matches.push(&revindex.sig_files[dataset_id]);
 
             for hash in match_mh.iter_mins() {
                 if let Some(dataset_ids) = revindex.hash_to_idx.get(hash) {
@@ -416,8 +416,10 @@ fn gather<P: AsRef<Path>>(
         let mut path = outdir.clone();
         path.push(queries_path[i].file_name().unwrap());
 
-        let out = BufWriter::new(File::create(path).unwrap());
-        serde_json::to_writer(out, &matches).unwrap();
+        let mut out = BufWriter::new(File::create(path).unwrap());
+        for m in matches {
+            writeln!(out, "{}", m.to_str().unwrap()).unwrap();
+        }
         info!("Finishing query {:?}", queries_path[i]);
     });
 
