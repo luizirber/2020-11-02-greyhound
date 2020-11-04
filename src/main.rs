@@ -58,6 +58,10 @@ enum Cli {
         /// Delay loading queries into memory
         #[structopt(long = "--lazy")]
         lazy: bool,
+
+        /// Preload reference signatures into memory
+        #[structopt(long = "--preload")]
+        preload: bool,
     },
     Index {
         /// The path for output
@@ -248,6 +252,7 @@ fn gather<P: AsRef<Path>>(
     output: Option<P>,
     from_file: bool,
     lazy: bool,
+    preload: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading queries");
 
@@ -279,6 +284,7 @@ fn gather<P: AsRef<Path>>(
                 if let Some(sketch) = sig.select_sketch(&template) {
                     if let Sketch::MinHash(mh) = sketch {
                         query = Some(mh.clone());
+                        // TODO: deal with mh.size() == 0
                         let t = threshold_bp / (mh.size() * scaled);
                         threshold = cmp::min(threshold, t);
                     }
@@ -317,6 +323,20 @@ fn gather<P: AsRef<Path>>(
         }?
     };
 
+    let refsigs = if preload {
+        revindex
+            .sig_files
+            .iter()
+            .map(|ref_path| {
+                Signature::from_path(&ref_path)
+                    .unwrap_or_else(|_| panic!("Error processing {:?}", ref_path))
+                    .swap_remove(0)
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
     let outdir: PathBuf = if let Some(p) = output {
         p.as_ref().into()
     } else {
@@ -334,6 +354,9 @@ fn gather<P: AsRef<Path>>(
             for sig in &query_sig {
                 if let Some(sketch) = sig.select_sketch(&template) {
                     if let Sketch::MinHash(mh) = sketch {
+                        if mh.size() == 0 {
+                            return;
+                        }
                         query = Some(mh.clone());
                     }
                 }
@@ -355,10 +378,18 @@ fn gather<P: AsRef<Path>>(
             let (dataset_id, size) = counter.most_common()[0];
             match_size = if size >= threshold { size } else { break };
 
+            let ref_match;
+            let match_sig = if preload {
+                &refsigs[dataset_id]
+            } else {
+                let match_path = &revindex.sig_files[dataset_id];
+                ref_match = Signature::from_path(&match_path)
+                    .unwrap_or_else(|_| panic!("Error processing {:?}", match_path))
+                    .swap_remove(0);
+                &ref_match
+            };
+
             let mut match_mh = None;
-            let match_path = &revindex.sig_files[dataset_id];
-            let match_sig = &Signature::from_path(&match_path)
-                .unwrap_or_else(|_| panic!("Error processing {:?}", match_path))[0];
             if let Some(sketch) = match_sig.select_sketch(&template) {
                 if let Sketch::MinHash(mh) = sketch {
                     match_mh = Some(mh);
@@ -407,6 +438,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             from_file,
             lazy,
+            preload,
         } => gather(
             query_path,
             siglist,
@@ -416,6 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             from_file,
             lazy,
+            preload,
         )?,
         Cli::Index {
             output,
