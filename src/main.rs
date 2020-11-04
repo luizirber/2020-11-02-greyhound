@@ -54,6 +54,10 @@ enum Cli {
         /// Is the index a list of signatures?
         #[structopt(long = "--from-file")]
         from_file: bool,
+
+        /// Delay loading queries into memory
+        #[structopt(long = "--lazy")]
+        lazy: bool,
     },
     Index {
         /// The path for output
@@ -243,6 +247,7 @@ fn gather<P: AsRef<Path>>(
     threshold_bp: usize,
     output: Option<P>,
     from_file: bool,
+    lazy: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading queries");
 
@@ -266,26 +271,28 @@ fn gather<P: AsRef<Path>>(
 
     let mut queries = vec![];
     let mut threshold = usize::max_value();
-    for query_path in &queries_path {
-        let query_sig = Signature::from_path(query_path)?;
-        let mut query = None;
-        for sig in &query_sig {
-            if let Some(sketch) = sig.select_sketch(&template) {
-                if let Sketch::MinHash(mh) = sketch {
-                    query = Some(mh.clone());
-                    let t = threshold_bp / (mh.size() * scaled);
-                    threshold = cmp::min(threshold, t);
+    if !lazy || from_file {
+        for query_path in &queries_path {
+            let query_sig = Signature::from_path(query_path)?;
+            let mut query = None;
+            for sig in &query_sig {
+                if let Some(sketch) = sig.select_sketch(&template) {
+                    if let Sketch::MinHash(mh) = sketch {
+                        query = Some(mh.clone());
+                        let t = threshold_bp / (mh.size() * scaled);
+                        threshold = cmp::min(threshold, t);
+                    }
                 }
             }
+            if let Some(q) = query {
+                queries.push(q);
+            } else {
+                todo!("throw error, some sigs were not valid")
+            };
         }
-        if let Some(q) = query {
-            queries.push(q);
-        } else {
-            todo!("throw error, some sigs were not valid")
-        };
     }
 
-    info!("Loaded {} query signatures", queries.len());
+    info!("Loaded {} query signatures", queries_path.len());
 
     // Step 1: filter and prepare a reduced RevIndex for all queries
     let revindex = if from_file {
@@ -303,7 +310,11 @@ fn gather<P: AsRef<Path>>(
 
         build_revindex(&search_sigs, &template, threshold, Some(&queries))
     } else {
-        load_revindex(siglist, Some(&queries))?
+        if lazy {
+            load_revindex(siglist, None)
+        } else {
+            load_revindex(siglist, Some(&queries))
+        }?
     };
 
     let outdir: PathBuf = if let Some(p) = output {
@@ -316,7 +327,22 @@ fn gather<P: AsRef<Path>>(
     std::fs::create_dir_all(&outdir)?;
 
     // Step 2: Gather using the RevIndex and a specific Counter for each query
-    queries.par_iter().enumerate().for_each(|(i, query)| {
+    queries_path.par_iter().enumerate().for_each(|(i, query)| {
+        let query = if lazy {
+            let query_sig = Signature::from_path(query).unwrap();
+            let mut query = None;
+            for sig in &query_sig {
+                if let Some(sketch) = sig.select_sketch(&template) {
+                    if let Sketch::MinHash(mh) = sketch {
+                        query = Some(mh.clone());
+                    }
+                }
+            }
+            query.unwrap()
+        } else {
+            queries[i].clone()
+        };
+
         info!("Build counter for query");
         let mut counter = build_counter(&revindex, Some(&query));
         let threshold = threshold_bp / (query.size() * scaled);
@@ -380,6 +406,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             threshold_bp,
             output,
             from_file,
+            lazy,
         } => gather(
             query_path,
             siglist,
@@ -388,6 +415,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             threshold_bp,
             output,
             from_file,
+            lazy,
         )?,
         Cli::Index {
             output,
