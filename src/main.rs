@@ -316,7 +316,7 @@ fn gather<P: AsRef<Path>>(
     std::fs::create_dir_all(&outdir)?;
 
     // Step 2: Gather using the RevIndex and a specific Counter for each query
-    for (i, query) in queries.iter().enumerate() {
+    queries.par_iter().enumerate().for_each(|(i, query)| {
         info!("Build counter for query");
         let mut counter = build_counter(&revindex, Some(&query));
         let threshold = threshold_bp / (query.size() * scaled);
@@ -360,9 +360,9 @@ fn gather<P: AsRef<Path>>(
         path.push(queries_path[i].file_name().unwrap());
 
         let out = BufWriter::new(File::create(path).unwrap());
-        serde_json::to_writer(out, &matches)?;
+        serde_json::to_writer(out, &matches).unwrap();
         info!("Finishing query {:?}", queries_path[i]);
-    }
+    });
 
     info!("Finished");
     Ok(())
