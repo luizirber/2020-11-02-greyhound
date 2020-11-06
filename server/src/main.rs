@@ -1,37 +1,42 @@
-use serde::{Deserialize, Serialize};
-use tide::prelude::*; // Pulls in the json! macro.
-use tide::{Body, Request};
+use std::path::Path;
+use std::sync::Arc;
 
-#[derive(Deserialize, Serialize)]
-struct Cat {
-    name: String,
+//use tide::prelude::*;
+use tide::{Body, Request, Response, StatusCode};
+
+use greyhound_core::RevIndex;
+
+#[derive(Clone)]
+struct RevIndexState {
+    revindex: Arc<RevIndex>,
+}
+
+impl RevIndexState {
+    fn load<P: AsRef<Path>>(path: P) -> Self {
+        let revindex = RevIndex::load(path, None).expect("Error loading index");
+        Self {
+            revindex: Arc::new(revindex),
+        }
+    }
+
+    fn gather(&self, query: Sketch) -> Vec<String> {
+        self.revindex.gather()
+    }
 }
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
     tide::log::start();
-    let mut app = tide::new();
+    let path = "";
+    let mut app = tide::with_state(RevIndexState::load(path));
 
-    app.at("/submit").post(|mut req: Request<()>| async move {
-        let cat: Cat = req.body_json().await?;
-        println!("cat name: {}", cat.name);
+    app.at("/submit")
+        .post(|mut req: Request<RevIndexState>| async move {
+            let sig = req.body_bytes().await?;
+            let result = req.state().gather(sig);
 
-        let cat = Cat {
-            name: "chashu".into(),
-        };
-
-        Ok(Body::from_json(&cat)?)
-    });
-
-    app.at("/animals").get(|_| async {
-        Ok(json!({
-            "meta": { "count": 2 },
-            "animals": [
-                { "type": "cat", "name": "chashu" },
-                { "type": "cat", "name": "nori" }
-            ]
-        }))
-    });
+            Ok(Body::from_json(&result))
+        });
 
     app.listen("127.0.0.1:8080").await?;
     Ok(())
