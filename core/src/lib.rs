@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::{max_hash_for_scaled, KmerMinHash};
 use sourmash::sketch::Sketch;
-use structopt::StructOpt;
 
 type HashToIdx = HashMap<u64, HashSet<usize>, BuildNoHashHasher<u64>>;
 
@@ -23,64 +22,6 @@ struct RevIndex {
 }
 
 type SigCounter = counter::Counter<usize>;
-
-#[derive(StructOpt, Debug)]
-enum Cli {
-    Gather {
-        /// Query signature
-        #[structopt(parse(from_os_str))]
-        query_path: PathBuf,
-
-        /// Precomputed index or list of reference signatures
-        #[structopt(parse(from_os_str))]
-        siglist: PathBuf,
-
-        /// ksize
-        #[structopt(short = "k", long = "ksize", default_value = "31")]
-        ksize: u8,
-
-        /// scaled
-        #[structopt(short = "s", long = "scaled", default_value = "1000")]
-        scaled: usize,
-
-        /// threshold_bp
-        #[structopt(short = "t", long = "threshold_bp", default_value = "50000")]
-        threshold_bp: usize,
-
-        /// The path for output
-        #[structopt(parse(from_os_str), short = "o", long = "output")]
-        output: Option<PathBuf>,
-
-        /// Is the index a list of signatures?
-        #[structopt(long = "--from-file")]
-        from_file: bool,
-
-        /// Delay loading queries into memory
-        #[structopt(long = "--lazy")]
-        lazy: bool,
-
-        /// Preload reference signatures into memory
-        #[structopt(long = "--preload")]
-        preload: bool,
-    },
-    Index {
-        /// The path for output
-        #[structopt(parse(from_os_str))]
-        output: PathBuf,
-
-        /// List of reference signatures
-        #[structopt(parse(from_os_str))]
-        siglist: PathBuf,
-
-        /// ksize
-        #[structopt(short = "k", long = "ksize", default_value = "31")]
-        ksize: u8,
-
-        /// scaled
-        #[structopt(short = "s", long = "scaled", default_value = "1000")]
-        scaled: usize,
-    },
-}
 
 fn load_revindex<P: AsRef<Path>>(
     index_path: P,
@@ -204,7 +145,7 @@ fn build_counter(revindex: &RevIndex, query: Option<&KmerMinHash>) -> SigCounter
     }
 }
 
-fn index<P: AsRef<Path>>(
+pub fn index<P: AsRef<Path>>(
     siglist: P,
     ksize: u8,
     scaled: usize,
@@ -243,7 +184,29 @@ fn index<P: AsRef<Path>>(
     Ok(())
 }
 
-fn gather<P: AsRef<Path>>(
+fn read_paths<P: AsRef<Path>>(paths_file: P) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let paths = BufReader::new(File::open(paths_file)?);
+    Ok(paths
+        .lines()
+        .map(|line| {
+            let mut path = PathBuf::new();
+            path.push(line.unwrap());
+            path
+        })
+        .collect())
+}
+
+fn build_template(ksize: u8, scaled: usize) -> Sketch {
+    let max_hash = max_hash_for_scaled(scaled as u64);
+    let template_mh = KmerMinHash::builder()
+        .num(0u32)
+        .ksize(ksize as u32)
+        .max_hash(max_hash)
+        .build();
+    Sketch::MinHash(template_mh)
+}
+
+pub fn gather<P: AsRef<Path>>(
     queries_file: P,
     siglist: P,
     ksize: u8,
@@ -256,23 +219,8 @@ fn gather<P: AsRef<Path>>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Loading queries");
 
-    let max_hash = max_hash_for_scaled(scaled as u64);
-    let template_mh = KmerMinHash::builder()
-        .num(0u32)
-        .ksize(ksize as u32)
-        .max_hash(max_hash)
-        .build();
-    let template = Sketch::MinHash(template_mh);
-
-    let queries_paths = BufReader::new(File::open(queries_file)?);
-    let queries_path: Vec<PathBuf> = queries_paths
-        .lines()
-        .map(|line| {
-            let mut path = PathBuf::new();
-            path.push(line.unwrap());
-            path
-        })
-        .collect();
+    let template = build_template(ksize, scaled);
+    let queries_path = read_paths(queries_file)?;
 
     let mut queries = vec![];
     let mut threshold = usize::max_value();
@@ -303,15 +251,7 @@ fn gather<P: AsRef<Path>>(
     // Step 1: filter and prepare a reduced RevIndex for all queries
     let revindex = if from_file {
         info!("Loading siglist");
-        let siglist_file = BufReader::new(File::open(siglist)?);
-        let search_sigs: Vec<PathBuf> = siglist_file
-            .lines()
-            .map(|line| {
-                let mut path = PathBuf::new();
-                path.push(line.unwrap());
-                path
-            })
-            .collect();
+        let search_sigs = read_paths(siglist)?;
         info!("Loaded {} sig paths in siglist", search_sigs.len());
 
         build_revindex(&search_sigs, &template, threshold, Some(&queries))
@@ -424,41 +364,5 @@ fn gather<P: AsRef<Path>>(
     });
 
     info!("Finished");
-    Ok(())
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-
-    match Cli::from_args() {
-        Cli::Gather {
-            query_path,
-            siglist,
-            ksize,
-            scaled,
-            threshold_bp,
-            output,
-            from_file,
-            lazy,
-            preload,
-        } => gather(
-            query_path,
-            siglist,
-            ksize,
-            scaled,
-            threshold_bp,
-            output,
-            from_file,
-            lazy,
-            preload,
-        )?,
-        Cli::Index {
-            output,
-            siglist,
-            ksize,
-            scaled,
-        } => index(siglist, ksize, scaled, output)?,
-    };
-
     Ok(())
 }
