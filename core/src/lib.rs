@@ -48,6 +48,21 @@ impl RevIndex {
     ) -> RevIndex {
         let processed_sigs = AtomicUsize::new(0);
 
+        // If threshold is zero, let's merge all queries and save time later
+        let merged_query = if let Some(qs) = queries {
+            if threshold == 0 {
+                let mut merged = qs[0].clone();
+                for query in &qs[1..] {
+                    merged.merge(query).unwrap();
+                }
+                Some(merged)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let hash_to_idx = search_sigs
             .par_iter()
             .enumerate()
@@ -68,27 +83,32 @@ impl RevIndex {
                 let search_mh = search_mh.unwrap();
 
                 let mut hash_to_idx = HashToIdx::with_hasher(BuildNoHashHasher::default());
-                if let Some(qs) = queries {
-                    for query in qs {
-                        let (matched_hashes, intersection) = query.intersection(search_mh).unwrap();
-                        if !matched_hashes.is_empty() || intersection > threshold as u64 {
-                            matched_hashes.into_iter().for_each(|hash| {
-                                let mut dataset_ids = HashSet::new();
-                                dataset_ids.insert(dataset_id);
-                                hash_to_idx.insert(hash, dataset_ids);
-                            });
-                        }
-                    }
-                } else {
-                    let matched = search_mh.mins();
-                    let size = matched.len() as u64;
-                    if !matched.is_empty() || size > threshold as u64 {
-                        matched.into_iter().for_each(|hash| {
+                let mut add_to = |matched_hashes: Vec<u64>, intersection| {
+                    if !matched_hashes.is_empty() || intersection > threshold as u64 {
+                        matched_hashes.into_iter().for_each(|hash| {
                             let mut dataset_ids = HashSet::new();
                             dataset_ids.insert(dataset_id);
                             hash_to_idx.insert(hash, dataset_ids);
                         });
                     }
+                };
+
+                if let Some(qs) = queries {
+                    if let Some(ref merged) = merged_query {
+                        let (matched_hashes, intersection) =
+                            merged.intersection(search_mh).unwrap();
+                        add_to(matched_hashes, intersection);
+                    } else {
+                        for query in qs {
+                            let (matched_hashes, intersection) =
+                                query.intersection(search_mh).unwrap();
+                            add_to(matched_hashes, intersection);
+                        }
+                    }
+                } else {
+                    let matched = search_mh.mins();
+                    let size = matched.len() as u64;
+                    add_to(matched, size);
                 };
 
                 if hash_to_idx.is_empty() {
@@ -133,7 +153,7 @@ impl RevIndex {
             hash_to_idx,
             sig_files: search_sigs.into(),
             ref_sigs,
-            template: template.clone().into(),
+            template: template.clone(),
         }
     }
 
