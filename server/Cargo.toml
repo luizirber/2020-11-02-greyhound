@@ -11,3 +11,5 @@ tide = "0.14.0"
 serde = "1.0"
 async-std = { version = "1.6.0", features = ["attributes"] }
 greyhound-core = { path = "../core" }
+sourmash = "0.10.0"
+log = "0.4.8"

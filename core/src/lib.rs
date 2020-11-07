@@ -219,4 +219,8 @@ impl RevIndex {
             .cloned()
             .collect()
     }
+
+    pub fn template(&self) -> Sketch {
+        self.template.clone()
+    }
 }
