@@ -204,7 +204,7 @@ fn gather<P: AsRef<Path>>(
         let threshold = threshold_bp / (query.size() * query.scaled() as usize);
 
         info!("Starting gather");
-        let matches = revindex.gather(counter, threshold);
+        let matches = revindex.gather(counter, threshold).unwrap();
 
         info!("Saving {} matches", matches.len());
         let mut path = outdir.clone();

@@ -158,7 +158,11 @@ impl RevIndex {
         }
     }
 
-    pub fn gather(&self, mut counter: SigCounter, threshold: usize) -> Vec<String> {
+    pub fn gather(
+        &self,
+        mut counter: SigCounter,
+        threshold: usize,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut match_size = usize::max_value();
         let mut matches = vec![];
 
@@ -171,9 +175,8 @@ impl RevIndex {
             let match_sig = if let Some(refsigs) = &self.ref_sigs {
                 &refsigs[dataset_id]
             } else {
-                ref_match = Signature::from_path(&match_path)
-                    .unwrap_or_else(|_| panic!("Error processing {:?}", match_path))
-                    .swap_remove(0);
+                // TODO: remove swap_remove
+                ref_match = Signature::from_path(&match_path)?.swap_remove(0);
                 &ref_match
             };
 
@@ -199,7 +202,7 @@ impl RevIndex {
             }
             counter.remove(&dataset_id);
         }
-        matches
+        Ok(matches)
     }
 
     pub fn counter_for_query(&self, query: &KmerMinHash) -> SigCounter {

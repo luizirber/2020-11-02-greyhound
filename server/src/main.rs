@@ -11,24 +11,43 @@ struct RevIndexState {
     revindex: Arc<RevIndex>,
 }
 
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Signature is not compatible with index")]
+    UnsupportedSignature,
+
+    #[error("Sketch is not compatible with index")]
+    UnsupportedSketch,
+
+    #[error("Couldn't load the index ({0})")]
+    IndexLoading(String),
+
+    #[error("Error during gather ({0})")]
+    Gather(String),
+}
+
 impl RevIndexState {
-    fn load<P: AsRef<Path>>(path: P) -> Self {
-        let revindex = RevIndex::load(path, None).expect("Error loading index");
-        Self {
+    fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let revindex =
+            RevIndex::load(path, None).map_err(|e| Error::IndexLoading(format!("{}", e)))?;
+        Ok(Self {
             revindex: Arc::new(revindex),
-        }
+        })
     }
 
-    fn gather(&self, query: Signature) -> Vec<String> {
+    fn gather(&self, query: Signature) -> Result<Vec<String>, Error> {
         if let Some(sketch) = query.select_sketch(&self.revindex.template()) {
             if let Sketch::MinHash(mh) = sketch {
                 let counter = self.revindex.counter_for_query(&mh);
-                self.revindex.gather(counter, 0)
+                Ok(self
+                    .revindex
+                    .gather(counter, 0)
+                    .map_err(|e| Error::Gather(format!("{}", e)))?)
             } else {
-                todo!("Return error")
+                Err(Error::UnsupportedSketch)
             }
         } else {
-            todo!("Return error")
+            Err(Error::UnsupportedSignature)
         }
     }
 }
@@ -37,7 +56,7 @@ impl RevIndexState {
 async fn main() -> tide::Result<()> {
     tide::log::start();
     let path = "data/genbank_bacteria.json.gz";
-    let mut app = tide::with_state(RevIndexState::load(path));
+    let mut app = tide::with_state(RevIndexState::load(path)?);
 
     app.at("/submit")
         .post(|mut req: Request<RevIndexState>| async move {
@@ -46,7 +65,7 @@ async fn main() -> tide::Result<()> {
                 .expect("Error loading sig")
                 .swap_remove(0);
 
-            let result = req.state().gather(sig);
+            let result = req.state().gather(sig)?;
 
             Ok(Body::from_json(&result)?)
         });

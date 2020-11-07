@@ -13,3 +13,4 @@ async-std = { version = "1.6.0", features = ["attributes"] }
 greyhound-core = { path = "../core" }
 sourmash = "0.10.0"
 log = "0.4.8"
+thiserror = "1.0"
