@@ -158,6 +158,27 @@ impl RevIndex {
         }
     }
 
+    pub fn search(
+        &self,
+        counter: SigCounter,
+        similarity: bool,
+        threshold: usize,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let mut matches = vec![];
+        if similarity {
+            todo!("correct threshold")
+        }
+
+        for (dataset_id, size) in counter.most_common() {
+            if size >= threshold {
+                matches.push(self.sig_files[dataset_id].to_str().unwrap().into());
+            } else {
+                break;
+            };
+        }
+        Ok(matches)
+    }
+
     pub fn gather(
         &self,
         mut counter: SigCounter,
