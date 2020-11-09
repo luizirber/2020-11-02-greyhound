@@ -1,0 +1,136 @@
+/* ===========================================================================
+   Box
+   =========================================================================== */
+
+.columns {
+  display: flex;
+  justify-content: space-between;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1em;
+  padding: 1em;
+  border-radius: 2px;
+  background-color: #F7F8FA;
+}
+
+.box > h2 {
+  display: block;
+  border-bottom: 1px solid #B7BBC8;
+  text-align: center;
+  padding-bottom: 0.5em;
+  margin-bottom: 1em;
+}
+
+button {
+  padding: 0.625em 1.5em;
+  border: 2px solid #69C4CD;
+  border-radius: 2px;
+  background-color: #69C4CD;
+  color: #FFF;
+  font-size: 0.9em;
+  cursor: pointer;
+  outline: none;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+input {
+  width: 100%;
+  margin-right: 3px;
+  padding: 0.7em;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  color: #000;
+  outline: none;
+}
+
+input:hover,
+input:focus,
+input:active {
+  border-color: #69C4CD;
+}
+
+.input-button {
+  display: flex;
+}
+
+/* Params
+   =========================================================================== */
+
+fieldset {
+  border-width: 0;
+  border-style: none;
+}
+
+#params,
+#dna-protein-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  line-height: 1.5rem;
+}
+
+label {
+  text-indent: 0;
+  text-align: left;
+  font-size: 0.75rem;
+}
+
+/* Files
+   =========================================================================== */
+
+#files {
+  flex: 0 0 65%;
+  min-height: 500px;
+}
+
+#file-status {
+  font-style: italic;
+  color: #6ACAD1;
+  font-size: 0.8em;
+  margin: 1em 0;
+}
+
+#drag-container {
+  height: 10em;
+  margin-top: 1em;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px dashed;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+#drag-container.dragging {
+  background-color: #E7E8EE;
+  opacity: 1;
+}
+
+#drag-container p {
+  margin: 2em;
+}
+
+#drag-container img {
+  width: 100px;
+  height: 100px;
+  margin: 2em;
+}
+
+#progress-container {
+  margin-top: 1em;
+  border-radius: 0.5em;
+  background-color: #0B3A53;
+  overflow-x: hidden;
+}
+
+#progress-bar {
+  height: 1em;
+  border-radius: 0.5em;
+  background-color: #6ACAD1;
+  transform: translateX(-100%);
+}

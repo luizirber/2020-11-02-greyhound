@@ -59,8 +59,6 @@ impl RevIndexState {
         ksize: Option<u8>,
     ) -> Result<Self, Error> {
         let revindex = if from_file {
-            RevIndex::load(path, None).map_err(|e| Error::IndexLoading(format!("{}", e)))?
-        } else {
             let paths = BufReader::new(
                 File::open(path).map_err(|e| Error::IndexLoading(format!("{}", e)))?,
             );
@@ -81,7 +79,10 @@ impl RevIndexState {
                 .build();
 
             RevIndex::new(&sigs, &Sketch::MinHash(template_mh), 0, None, false)
+        } else {
+            RevIndex::load(path, None).map_err(|e| Error::IndexLoading(format!("{}", e)))?
         };
+
         Ok(Self {
             revindex: Arc::new(revindex),
         })
@@ -181,6 +182,8 @@ async fn main() -> tide::Result<()> {
             Ok(Body::from_json(&result)?)
         });
 
+    app.at("/").serve_dir("wasm/dist/")?;
     app.listen("127.0.0.1:8080").await?;
+
     Ok(())
 }
