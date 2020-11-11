@@ -23,9 +23,11 @@ module.exports = {
       template: 'index.template.ejs',
       inject: 'body'
     }),
-    new CopyWebpackPlugin([
-      { from: 'app.css' }
-    ])
+    new CopyWebpackPlugin({
+      "patterns": [
+        { from: 'app.css' }
+      ]
+    })
   ],
   mode: 'development',
   target: 'web'
