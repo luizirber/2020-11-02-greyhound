@@ -6,7 +6,7 @@ use log::info;
 use nohash_hasher::BuildNoHashHasher;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use sourmash::signature::Signature;
+use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::KmerMinHash;
 use sourmash::sketch::Sketch;
 
@@ -183,7 +183,8 @@ impl RevIndex {
         &self,
         mut counter: SigCounter,
         threshold: usize,
-    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        query: &KmerMinHash,
+    ) -> Result<Vec<GatherResult>, Box<dyn std::error::Error>> {
         let mut match_size = usize::max_value();
         let mut matches = vec![];
 
@@ -208,8 +209,52 @@ impl RevIndex {
                 }
             }
             let match_mh = match_mh.unwrap();
-            matches.push(match_path.to_str().unwrap().into());
 
+            // Calculate stats
+            let f_orig_query = match_size as f64 / query.size() as f64;
+            let f_match = match_size as f64 / match_mh.size() as f64;
+            let filename = match_path.to_str().unwrap().into();
+            let name = match_sig.name();
+            let unique_intersect_bp = match_mh.scaled() as usize * match_size;
+            let gather_result_rank = matches.len();
+
+            let (intersect_orig, _) = match_mh.intersection_size(query)?;
+            let intersect_bp = (match_mh.scaled() as u64 * intersect_orig) as usize;
+
+            let f_unique_to_query = intersect_orig as f64 / query.size() as f64;
+
+            // TODO: all of these
+            let f_unique_weighted = 0.;
+            let average_abund = 0;
+            let median_abund = 0;
+            let std_abund = 0;
+            let md5 = "".into();
+            let match_ = "".into();
+            let f_match_orig = 0.;
+            let remaining_bp = 0;
+
+            let result = GatherResult {
+                intersect_bp,
+                f_orig_query,
+                f_match,
+                f_unique_to_query,
+                f_unique_weighted,
+                average_abund,
+                median_abund,
+                std_abund,
+                filename,
+                name,
+                md5,
+                match_,
+                f_match_orig,
+                unique_intersect_bp,
+                gather_result_rank,
+                remaining_bp,
+            };
+            matches.push(result);
+
+            // Prepare counter for finding the next match by decrementing
+            // all hashes found in the current match in other datasets
             for hash in match_mh.iter_mins() {
                 if let Some(dataset_ids) = self.hash_to_idx.get(hash) {
                     for dataset in dataset_ids {
@@ -247,4 +292,24 @@ impl RevIndex {
     pub fn template(&self) -> Sketch {
         self.template.clone()
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GatherResult {
+    intersect_bp: usize,
+    f_orig_query: f64,
+    f_match: f64,
+    f_unique_to_query: f64,
+    f_unique_weighted: f64,
+    average_abund: usize,
+    median_abund: usize,
+    std_abund: usize,
+    filename: String,
+    name: String,
+    md5: String,
+    match_: String,
+    f_match_orig: f64,
+    unique_intersect_bp: usize,
+    gather_result_rank: usize,
+    remaining_bp: usize,
 }

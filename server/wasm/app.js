@@ -126,16 +126,61 @@ function onDrop (event) {
         .then(response => response.json())
         .then(data => {
             const table = document.createElement("table")
+
+            let head = table.createTHead();
+            for (const cname of ["overlap", "p_query", "p_match", "name"]) {
+              let columnName = document.createElement("th");
+              let newText = document.createTextNode(cname);
+              columnName.appendChild(newText);
+              head.appendChild(columnName);
+            }
+            
             const baseURL = "https://www.ncbi.nlm.nih.gov/assembly/";
+            const fmt = function(n, decimals) {
+               return n.toFixed(decimals).replace(/\.?0*$/, ""); 
+            };
+            
+            const bp_fmt = function(bp) {
+              if (bp < 500) {
+                  return fmt(bp, 0) + ' bp'
+              } else if (bp <= 500e3) {
+                  return fmt(bp / 1e3, 1) + ' Kbp'
+              } else if (bp < 500e6) {
+                  return fmt(bp / 1e6, 1) + ' Mbp'
+              } else if (bp < 500e9) {
+                  return fmt(bp / 1e9, 1) + ' Gbp'
+              }
+              return '???'
+            };
+
+            // TODO: save data for CSV formatting before this loop,
+            // will change data from now on for screen formatting
             for (const rmatch of data) {
               let newRow = table.insertRow(-1);
-              let acc = new String(rmatch).substring(rmatch.lastIndexOf("/") + 1);
+
+              // TODO: format overlap (Kbp, Mbp)
+              rmatch['intersect_bp'] = bp_fmt(rmatch['intersect_bp'])
+
+              rmatch['f_orig_query'] = fmt(rmatch['f_orig_query'] * 100, 1) + "%";
+              rmatch['f_match'] = fmt(rmatch['f_match'] * 100, 1) + "%";
+              rmatch['average_abund'] = fmt(rmatch['average_abund'], 1)
+
+              let newCell;
+              let newText;
+              for (const cname of ["intersect_bp", "f_orig_query", "f_match"]) {
+								newCell = newRow.insertCell(-1);
+								newText = document.createTextNode(rmatch[cname]);
+								newCell.appendChild(newText);
+              }
+
+              newCell = newRow.insertCell(-1);
+              let acc = new String(rmatch['filename']).substring(rmatch["filename"].lastIndexOf("/") + 1);
               acc = acc.substring(0, acc.length - 4);
               const link = document.createElement('a');
               link.setAttribute('href', baseURL + acc);
-              let newText = document.createTextNode(acc);
+              newText = document.createTextNode(rmatch['name']);
               link.appendChild(newText);
-              newRow.appendChild(link);
+              newCell.appendChild(link);
             }
 
             while ($resultsContainer.firstChild) {
@@ -143,7 +188,6 @@ function onDrop (event) {
             }
 
             $resultsContainer.appendChild(table);
-            console.log(data);
         });
     })
 

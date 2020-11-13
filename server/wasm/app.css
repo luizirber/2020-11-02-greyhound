@@ -1,4 +1,49 @@
 /* ===========================================================================
+   Tables
+   =========================================================================== */
+
+table {
+  width: 100%;
+  margin: 1em 0;
+  padding: 1em;
+  border-spacing: 0;
+  background-color: #FFF;
+  word-break: break-all;
+}
+
+table th,
+table td {
+  padding: 1em;
+  font-size: 0.8em;
+  text-align: left;
+  font-weight: normal;
+}
+
+table th {
+  padding-top: 0;
+  font-size: 0.7em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+table tbody tr:nth-child(odd) {
+  background-color: #F7F8FA;
+}
+
+table tbody tr:hover {
+  background-color: rgb(100, 196, 205);
+  background-color: rgba(100, 196, 205, 0.2);
+}
+
+.table-action {
+  opacity: 0.5;
+}
+
+.table-action:hover {
+  opacity: 1;
+}
+
+/* ===========================================================================
    Box
    =========================================================================== */
 

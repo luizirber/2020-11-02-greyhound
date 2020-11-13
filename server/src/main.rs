@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use greyhound_core::RevIndex;
+use greyhound_core::{GatherResult, RevIndex};
 use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::{max_hash_for_scaled, KmerMinHash};
 use sourmash::sketch::Sketch;
@@ -88,13 +88,13 @@ impl RevIndexState {
         })
     }
 
-    fn gather(&self, query: Signature) -> Result<Vec<String>, Error> {
+    fn gather(&self, query: Signature) -> Result<Vec<GatherResult>, Error> {
         if let Some(sketch) = query.select_sketch(&self.revindex.template()) {
             if let Sketch::MinHash(mh) = sketch {
                 let counter = self.revindex.counter_for_query(&mh);
                 Ok(self
                     .revindex
-                    .gather(counter, 0)
+                    .gather(counter, 0, mh)
                     .map_err(|e| Error::Gather(format!("{}", e)))?)
             } else {
                 Err(Error::UnsupportedSketch)
