@@ -36,17 +36,11 @@ const onDragEnter = () => $dragContainer.classList.add('dragging')
 
 const onDragLeave = () => $dragContainer.classList.remove('dragging')
 
-function isFASTA (data) {
-  return data.toString().charAt(0) === '>'
-}
+const isFASTA = (data) => data.toString().charAt(0) === '>'
 
-function isFASTQ (data) {
-  return data.toString().charAt(0) === '@'
-}
+const isFASTQ = (data) => data.toString().charAt(0) === '@'
 
-function isGzip (data) {
-  return (data[0] === 31) && (data[1] === 139)
-}
+const isGzip = (data) => (data[0] === 31) && (data[1] === 139)
 
 function GzipParser () {
   return peek(function (data, swap) {
@@ -158,7 +152,6 @@ function onDrop (event) {
             for (const rmatch of data) {
               let newRow = table.insertRow(-1);
 
-              // TODO: format overlap (Kbp, Mbp)
               rmatch['intersect_bp'] = bp_fmt(rmatch['intersect_bp'])
 
               rmatch['f_orig_query'] = fmt(rmatch['f_orig_query'] * 100, 1) + "%";
