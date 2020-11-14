@@ -1,0 +1,26 @@
+[package]
+name = "greyhound-frontend"
+version = "0.1.0"
+authors = ["Luiz Irber <luiz.irber@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "greyhound_frontend"
+path = "src/bin/app.rs"
+
+[[bin]]
+name = "greyhound_worker"
+path = "src/bin/worker.rs"
+
+[dependencies]
+yew = "0.17"
+log = "0.4"
+wasm-logger = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+niffler = { version = "2.2.0", default-features = false, features = ["gz"] }
+needletail = { version = "0.4.0", default-features = false }
+sourmash = "0.10.0"
+wee_alloc = "0.4.5"
+web-sys = "0.3.45"

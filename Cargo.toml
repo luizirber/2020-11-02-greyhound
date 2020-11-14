@@ -1,4 +1,4 @@
 [workspace]
-members = ["cli", "server", "core"]
+members = ["cli", "server", "server/frontend", "core"]
 
 default-members = ["cli"]
