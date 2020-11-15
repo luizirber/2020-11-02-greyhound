@@ -6,6 +6,8 @@ use yew::services::interval::IntervalService;
 use yew::services::Task;
 use yew::worker::*;
 
+use sourmash::signature::Signature;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Request {
     GetDataFromServer,

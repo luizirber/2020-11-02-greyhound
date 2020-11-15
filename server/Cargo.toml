@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 tide = "0.14.0"
+tide-compress = "0.7.0"
 serde = "1.0"
 async-std = { version = "1.6.0", features = ["attributes"] }
 greyhound-core = { path = "../core" }

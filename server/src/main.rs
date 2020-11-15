@@ -158,6 +158,7 @@ async fn main() -> tide::Result<()> {
         Some(scaled),
         Some(ksize),
     )?);
+    app.with(tide_compress::CompressMiddleware::new());
 
     app.at("/gather")
         .post(|mut req: Request<RevIndexState>| async move {
@@ -182,7 +183,7 @@ async fn main() -> tide::Result<()> {
             Ok(Body::from_json(&result)?)
         });
 
-    app.at("/").serve_dir("wasm/dist/")?;
+    app.at("/").serve_dir("frontend/static")?;
     app.listen("127.0.0.1:8080").await?;
 
     Ok(())

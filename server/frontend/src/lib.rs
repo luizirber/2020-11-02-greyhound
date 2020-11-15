@@ -1,7 +1,5 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 
-pub mod context;
-pub mod job;
 pub mod native_worker;
 
 use log::info;
@@ -12,17 +10,13 @@ use web_sys::DragEvent;
 
 pub struct Model {
     link: ComponentLink<Self>,
-    worker: Box<dyn Bridge<native_worker::Worker>>,
-    job: Box<dyn Bridge<job::Worker>>,
-    context: Box<dyn Bridge<context::Worker>>,
-    context_2: Box<dyn Bridge<context::Worker>>,
+    job: Box<dyn Bridge<native_worker::Worker>>,
 }
 
 pub enum Msg {
     SendToWorker,
-    SendToJob,
-    SendToContext,
     DataReceived,
+    Drop(DragEvent),
 }
 
 impl Component for Model {
@@ -31,41 +25,20 @@ impl Component for Model {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let callback = link.callback(|_| Msg::DataReceived);
-        let worker = native_worker::Worker::bridge(callback);
+        let job = native_worker::Worker::bridge(callback);
 
-        let callback = link.callback(|_| Msg::DataReceived);
-        let job = job::Worker::bridge(callback);
-
-        let callback = link.callback(|_| Msg::DataReceived);
-        let context = context::Worker::bridge(callback);
-
-        let callback = link.callback(|_| Msg::DataReceived);
-        let context_2 = context::Worker::bridge(callback);
-
-        Model {
-            link,
-            worker,
-            job,
-            context,
-            context_2,
-        }
+        Model { link, job }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::SendToWorker => {
-                self.worker.send(native_worker::Request::GetDataFromServer);
-            }
-            Msg::SendToJob => {
-                self.job.send(job::Request::GetDataFromServer);
-            }
-            Msg::SendToContext => {
-                self.context.send(context::Request::GetDataFromServer);
-                self.context_2.send(context::Request::GetDataFromServer);
+                self.job.send(native_worker::Request::GetDataFromServer);
             }
             Msg::DataReceived => {
                 info!("DataReceived");
             }
+            Msg::Drop(_) => unimplemented!(),
         }
         true
     }
@@ -79,7 +52,21 @@ impl Component for Model {
 
             <div class="columns">
               <div id="files" class="box" ondragover=Callback::from(|e: DragEvent| {e.prevent_default();})>
-                <div id="drag-container">
+                <div id="drag-container" ondrop=self.link.callback(move |event: DragEvent| {
+                  event.prevent_default();
+                  event.stop_propagation();
+
+                  //let dt = event.data_transfer().unwrap();
+                  // let files = dt.items();
+                  // let img = files.get(0).unwrap();
+                  //
+                  // let file_reader = web_sys::FileReader::new().unwrap();
+                  // file_reader.read_as_data_url(&img).unwrap();
+                  //let img = file_reader.result().unwrap();
+                  //let img = File::new_with_buffer_source_sequence(&img, "tmp");
+
+                  Msg::Drop(event)
+                }) >
                   <p>
                     <b>{"Drag & drop"}</b>{" a FASTA/Q file here."}<br/>
                        {"Either gzip-compressed or uncompressed works too."}
