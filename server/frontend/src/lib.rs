@@ -2,21 +2,60 @@
 
 pub mod native_worker;
 
+use anyhow::Error;
 use log::info;
-use yew::worker::{Bridge, Bridged};
-use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender};
-
+use needletail::{parse_fastx_reader, Sequence};
+use serde::{Deserialize, Serialize};
 use web_sys::DragEvent;
+use yew::format::{Json, Nothing};
+use yew::services::fetch::{FetchService, FetchTask, Request, Response};
+use yew::services::reader::{File, FileChunk, FileData, ReaderService, ReaderTask};
+use yew::worker::{Bridge, Bridged};
+use yew::{html, Callback, ChangeData, Component, ComponentLink, Html, ShouldRender};
+
+use sourmash::cmd::ComputeParameters;
+use sourmash::signature::Signature;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GatherResult {
+    intersect_bp: usize,
+    f_orig_query: f64,
+    f_match: f64,
+    f_unique_to_query: f64,
+    f_unique_weighted: f64,
+    average_abund: usize,
+    median_abund: usize,
+    std_abund: usize,
+    filename: String,
+    name: String,
+    md5: String,
+    match_: String,
+    f_match_orig: f64,
+    unique_intersect_bp: usize,
+    gather_result_rank: usize,
+    remaining_bp: usize,
+}
 
 pub struct Model {
     link: ComponentLink<Self>,
     job: Box<dyn Bridge<native_worker::Worker>>,
+    reader: ReaderService,
+    tasks: Vec<ReaderTask>,
+    files: Vec<String>,
+    ft: Option<FetchTask>,
+    sig: Option<Signature>,
 }
 
 pub enum Msg {
     SendToWorker,
     DataReceived,
     Drop(DragEvent),
+    Loaded(FileData),
+    Chunk(Option<FileChunk>),
+    Files(Vec<File>),
+    FetchData(Vec<u8>),
+    FetchReady(Result<Vec<GatherResult>, Error>),
+    Ignore,
 }
 
 impl Component for Model {
@@ -27,7 +66,15 @@ impl Component for Model {
         let callback = link.callback(|_| Msg::DataReceived);
         let job = native_worker::Worker::bridge(callback);
 
-        Model { link, job }
+        Model {
+            link,
+            job,
+            reader: ReaderService::new(),
+            tasks: vec![],
+            files: vec![],
+            ft: None,
+            sig: None,
+        }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -39,6 +86,68 @@ impl Component for Model {
                 info!("DataReceived");
             }
             Msg::Drop(_) => unimplemented!(),
+            Msg::FetchData(json) => {
+                let callback = self.link.callback(
+                    move |response: Response<Json<Result<Vec<GatherResult>, Error>>>| {
+                        let (meta, Json(data)) = response.into_parts();
+                        println!("META: {:?}, {:?}", meta, data);
+                        if meta.status.is_success() {
+                            Msg::FetchReady(data)
+                        } else {
+                            Msg::Ignore // FIXME: Handle this error accordingly.
+                        }
+                    },
+                );
+                let request = Request::post("/gather").body(Ok(json)).unwrap();
+                self.ft = Some(FetchService::fetch_binary(request, callback).unwrap());
+            }
+            Msg::FetchReady(result) => {
+                info!("{:?}", result);
+                // result is Vec<GatherResult>
+                //todo!("populate the table")
+            }
+            Msg::Loaded(file) => {
+                let params = ComputeParameters::builder()
+                    .ksizes(vec![21])
+                    .num_hashes(0)
+                    .scaled(2000)
+                    .build();
+                let mut sig = Signature::from_params(&params);
+
+                let mut buf = vec![];
+                let (mut reader, _) = niffler::get_reader(Box::new(&file.content[..])).unwrap();
+                reader.read_to_end(&mut buf).unwrap();
+                let mut parser = parse_fastx_reader(&buf[..]).unwrap();
+                while let Some(record) = parser.next() {
+                    let record = record.unwrap();
+                    let norm_seq = record.normalize(true);
+                    sig.add_sequence(&norm_seq, true).unwrap();
+                }
+                let json = serde_json::to_vec(&[&sig]).unwrap();
+                self.sig = Some(sig);
+                // info!("{:?}", &json);
+                self.link.send_message(Msg::FetchData(json));
+            }
+            Msg::Chunk(Some(chunk)) => {
+                let info = format!("chunk: {:?}", chunk);
+                self.files.push(info);
+            }
+            Msg::Files(files) => {
+                let chunks = false;
+                for file in files.into_iter() {
+                    let task = {
+                        if chunks {
+                            let callback = self.link.callback(Msg::Chunk);
+                            self.reader.read_file_by_chunks(file, callback, 10).unwrap()
+                        } else {
+                            let callback = self.link.callback(Msg::Loaded);
+                            self.reader.read_file(file, callback).unwrap()
+                        }
+                    };
+                    self.tasks.push(task);
+                }
+            }
+            _ => return false,
         }
         true
     }
@@ -67,10 +176,19 @@ impl Component for Model {
 
                   Msg::Drop(event)
                 }) >
-                  <p>
-                    <b>{"Drag & drop"}</b>{" a FASTA/Q file here."}<br/>
-                       {"Either gzip-compressed or uncompressed works too."}
-                  </p>
+                  <p>{"Choose a FASTA/Q file to upload. File can be gzip-compressed."}</p>
+                    <input type="file" multiple=true onchange=self.link.callback(move |value| {
+                            let mut result = Vec::new();
+                            if let ChangeData::Files(files) = value {
+                                let files = js_sys::try_iter(&files)
+                                    .unwrap()
+                                    .unwrap()
+                                    .into_iter()
+                                    .map(|v| File::from(v.unwrap()));
+                                result.extend(files);
+                            }
+                            Msg::Files(result)
+                        })/>
                 </div>
 
                 <div id="progress-container">
