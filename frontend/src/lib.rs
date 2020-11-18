@@ -3,7 +3,6 @@
 pub mod native_worker;
 
 use anyhow::Error;
-use log::info;
 use web_sys::DragEvent;
 use yew::format::Json;
 use yew::services::fetch::{FetchService, FetchTask, Request, Response};
@@ -157,12 +156,11 @@ impl Component for Model {
                   {" spot instance on AWS, using ~10GB of the RAM for the inverted index + signature caching (for speed).
                   The server is implemented using "}<a href="https://github.com/http-rs/tide">{"tide"}</a>{", "}
                   {"an async web framework written in "}<a href="https://rust-lang.org">{"Rust"}</a>{". "}
-                  {"The frontend is implemented in JavaScript and "}<a href="https://webassembly.org/">{"WebAssembly"}</a>
-                  {" for calculating the Scaled MinHash sketch in your browser,
-                  instead of uploading the full data to the server.
-                  This uses the Rust implementation of sourmash compiled to WebAssembly using "}
-                  <a href="https://rustwasm.github.io/docs/wasm-bindgen/">{"wasm-bindgen"}</a>{" and packaged with "}
-                  <a href="https://rustwasm.github.io/wasm-pack/">{"wasm-pack"}</a>{"."}
+                  {"The frontend is implemented in "}<a href="https://yew.rs">{"Yew"}</a>
+                  {", a modern Rust framework for creating multi-threaded front-end web apps with "}
+                  <a href="https://webassembly.org/">{"WebAssembly"}</a>{"."}
+                  {"The frontend calculates the Scaled MinHash sketch in your browser,
+                  instead of uploading the full data to the server."}
                 </p>
 
                 <p>
@@ -214,7 +212,6 @@ impl Model {
     }
 
     fn view_row(&self, mdata: &GatherResult) -> Html {
-        info!("{:?}", mdata);
         let base_url = "https://www.ncbi.nlm.nih.gov/assembly/";
         let name = mdata.name();
         let acc = name.split(' ').next().unwrap();
