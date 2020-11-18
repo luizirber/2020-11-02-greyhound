@@ -183,7 +183,7 @@ async fn main() -> tide::Result<()> {
             Ok(Body::from_json(&result)?)
         });
 
-    app.at("/").serve_dir("frontend/static")?;
+    app.at("/").serve_dir("../frontend/static")?;
     app.listen("127.0.0.1:8080").await?;
 
     Ok(())

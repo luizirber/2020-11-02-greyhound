@@ -1,5 +1,5 @@
 [workspace]
-members = ["cli", "server", "server/frontend", "p2p"]
+members = ["cli", "server", "frontend", "p2p"]
 
 default-members = ["cli"]
 

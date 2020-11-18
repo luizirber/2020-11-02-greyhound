@@ -1,5 +1,3 @@
 /target
-server/wasm/dist
-server/wasm/node_modules
-server/frontend/static/*.js
-server/frontend/static/*.wasm
+frontend/static/*.js
+frontend/static/*.wasm
