@@ -21,6 +21,7 @@ pub struct Model {
     sig: Option<Signature>,
     reader: ReaderService,
     tasks: Vec<ReaderTask>,
+    gather_result: Vec<GatherResult>,
 }
 
 pub enum Msg {
@@ -49,6 +50,7 @@ impl Component for Model {
             sig: None,
             reader: ReaderService::new(),
             tasks: vec![],
+            gather_result: vec![],
         }
     }
 
@@ -78,9 +80,8 @@ impl Component for Model {
                 self.ft = Some(FetchService::fetch_binary(request, callback).unwrap());
             }
             Msg::FetchReady(result) => {
-                info!("{:?}", result);
-                // result is Vec<GatherResult>
-                //todo!("populate the table")
+                // TODO: deal with errors
+                self.gather_result = result.unwrap();
             }
             Msg::Files(files) => {
                 for file in files.into_iter() {
@@ -130,7 +131,9 @@ impl Component for Model {
                   </div>
                 </div>
 
-                <div id="results-container"></div>
+                <div id="results-container">
+                  { self.render_results() }
+                </div>
               </div>
 
               <div id="info" class="box">
@@ -184,5 +187,52 @@ impl Component for Model {
 
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
         false
+    }
+}
+
+impl Model {
+    fn render_results(&self) -> Html {
+        if self.gather_result.is_empty() {
+            html! { <></> }
+        } else {
+            html! {
+              <table>
+                <thead>
+                  <th>{"overlap"}</th>
+                  <th>{"p_query"}</th>
+                  <th>{"p_match"}</th>
+                  <th>{"name"}</th>
+                </thead>
+                <tbody>
+                  { self.gather_result.iter().map(|row| self.view_row(row)).collect::<Html>() }
+                </tbody>
+              </table>
+            }
+        }
+    }
+
+    fn view_row(&self, mdata: &GatherResult) -> Html {
+        info!("{:?}", mdata);
+        let base_url = "https://www.ncbi.nlm.nih.gov/assembly/";
+        let name = mdata.name();
+        let acc = name.split(' ').next().unwrap();
+
+        html! {
+          <tr>
+            <td>{bp_fmt(mdata.intersect_bp())}</td>
+            <td>{format!("{:.1}", mdata.f_orig_query())}</td>
+            <td>{format!("{:.1}", mdata.f_match())}</td>
+            <td><a href={ format!("{}{}", base_url, acc) }>{name}</a></td>
+          </tr>
+        }
+    }
+}
+
+fn bp_fmt(bp: usize) -> String {
+    match bp {
+        0..=500 => format!("{:.0} bp", bp),
+        501..=500_000 => format!("{:.1} Kbp", bp as f64 / 1e3),
+        500_001..=500_000_000 => format!("{:.1} Mbp", bp as f64 / 1e6),
+        _ => format!("{:.1} Gbp", bp as f64 / 1e9),
     }
 }
