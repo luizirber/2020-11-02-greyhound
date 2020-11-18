@@ -24,11 +24,9 @@ pub struct Model {
 }
 
 pub enum Msg {
-    SendToWorker(Vec<u8>),
+    SendToWorker(FileData),
     Files(Vec<File>),
-    Loaded(FileData),
     DataReceived(Vec<u8>),
-    Drop(DragEvent),
     FetchData(Vec<u8>),
     FetchReady(Result<Vec<GatherResult>, Error>),
     Ignore,
@@ -57,19 +55,12 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::SendToWorker(raw_data) => {
-                self.job.send(native_worker::Request::ProcessFile(raw_data));
+                self.job
+                    .send(native_worker::Request::ProcessFile(raw_data.content));
             }
             Msg::DataReceived(sig) => {
                 self.sig = Some(Signature::from_reader(&sig[..]).unwrap().swap_remove(0));
                 self.link.send_message(Msg::FetchData(sig));
-            }
-            Msg::Drop(_) => unimplemented!(),
-            Msg::Loaded(file) => {
-                let mut buf = vec![];
-                let (mut reader, _) = niffler::get_reader(Box::new(&file.content[..])).unwrap();
-                reader.read_to_end(&mut buf).unwrap();
-
-                self.link.send_message(Msg::SendToWorker(buf));
             }
             Msg::FetchData(json) => {
                 let callback = self.link.callback(
@@ -94,7 +85,7 @@ impl Component for Model {
             Msg::Files(files) => {
                 for file in files.into_iter() {
                     let task = {
-                        let callback = self.link.callback(Msg::Loaded);
+                        let callback = self.link.callback(Msg::SendToWorker);
                         self.reader.read_file(file, callback).unwrap()
                     };
                     self.tasks.push(task);
@@ -114,34 +105,20 @@ impl Component for Model {
 
             <div class="columns">
               <div id="files" class="box" ondragover=Callback::from(|e: DragEvent| {e.prevent_default();})>
-                <div id="drag-container" ondrop=self.link.callback(move |event: DragEvent| {
-                  event.prevent_default();
-                  event.stop_propagation();
-
-                  //let dt = event.data_transfer().unwrap();
-                  // let files = dt.items();
-                  // let img = files.get(0).unwrap();
-                  //
-                  // let file_reader = web_sys::FileReader::new().unwrap();
-                  // file_reader.read_as_data_url(&img).unwrap();
-                  //let img = file_reader.result().unwrap();
-                  //let img = File::new_with_buffer_source_sequence(&img, "tmp");
-
-                  Msg::Drop(event)
-                }) >
+                <div id="drag-container" class="box">
                   <p>{"Choose a FASTA/Q file to upload. File can be gzip-compressed."}</p>
-                    <input type="file" multiple=true onchange=self.link.callback(move |value| {
-                            let mut result = Vec::new();
-                            if let ChangeData::Files(files) = value {
-                                let files = js_sys::try_iter(&files)
-                                    .unwrap()
-                                    .unwrap()
-                                    .into_iter()
-                                    .map(|v| File::from(v.unwrap()));
-                                result.extend(files);
-                            }
-                            Msg::Files(result)
-                        })/>
+                  <input type="file" multiple=true onchange=self.link.callback(move |value| {
+                    let mut result = Vec::new();
+                    if let ChangeData::Files(files) = value {
+                        let files = js_sys::try_iter(&files)
+                            .unwrap()
+                            .unwrap()
+                            .into_iter()
+                            .map(|v| File::from(v.unwrap()));
+                        result.extend(files);
+                    }
+                    Msg::Files(result)
+                  })/>
                 </div>
 
                 <div id="progress-container">

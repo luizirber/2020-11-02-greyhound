@@ -1,4 +1,3 @@
-use log::info;
 use serde::{Deserialize, Serialize};
 use yew::worker::*;
 
@@ -32,11 +31,13 @@ impl Agent for Worker {
         Worker { link }
     }
 
-    fn update(&mut self, msg: Self::Message) {}
+    fn update(&mut self, _msg: Self::Message) {}
 
     fn handle_input(&mut self, msg: Self::Input, who: HandlerId) {
         match msg {
-            Request::ProcessFile(buf) => {
+            Request::ProcessFile(content) => {
+                let (mut reader, _) = niffler::get_reader(Box::new(&content[..])).unwrap();
+
                 let params = ComputeParameters::builder()
                     .ksizes(vec![21])
                     .num_hashes(0)
@@ -44,7 +45,7 @@ impl Agent for Worker {
                     .build();
                 let mut sig = Signature::from_params(&params);
 
-                let mut parser = parse_fastx_reader(&buf[..]).unwrap();
+                let mut parser = parse_fastx_reader(&mut reader).unwrap();
                 while let Some(record) = parser.next() {
                     let record = record.unwrap();
                     let norm_seq = record.normalize(true);
