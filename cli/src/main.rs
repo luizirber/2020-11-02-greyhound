@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use log::info;
 use structopt::StructOpt;
 
-use greyhound_core::RevIndex;
 use rayon::prelude::*;
+use sourmash::index::greyhound::RevIndex;
 use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::{max_hash_for_scaled, KmerMinHash};
 use sourmash::sketch::Sketch;
@@ -204,7 +204,7 @@ fn gather<P: AsRef<Path>>(
         let threshold = threshold_bp / (query.size() * query.scaled() as usize);
 
         info!("Starting gather");
-        let matches = revindex.gather(counter, threshold).unwrap();
+        let matches = revindex.gather(counter, threshold, &query).unwrap();
 
         info!("Saving {} matches", matches.len());
         let mut path = outdir.clone();
@@ -212,7 +212,7 @@ fn gather<P: AsRef<Path>>(
 
         let mut out = BufWriter::new(File::create(path).unwrap());
         for m in matches {
-            writeln!(out, "{}", m.as_str()).unwrap();
+            writeln!(out, "{}", m.get_match().as_str()).unwrap();
         }
         info!("Finishing query {:?}", queries_path[i]);
     });

@@ -1,30 +1,25 @@
-use std::time::Duration;
-
 use log::info;
 use serde::{Deserialize, Serialize};
-use yew::services::interval::IntervalService;
-use yew::services::Task;
 use yew::worker::*;
 
+use needletail::{parse_fastx_reader, Sequence};
+use sourmash::cmd::ComputeParameters;
 use sourmash::signature::Signature;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Request {
-    GetDataFromServer,
+    ProcessFile(Vec<u8>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
-    DataFetched,
+    Signature(Vec<u8>),
 }
 
-pub enum Msg {
-    Updating,
-}
+pub enum Msg {}
 
 pub struct Worker {
     link: AgentLink<Worker>,
-    _task: Box<dyn Task>,
 }
 
 impl Agent for Worker {
@@ -34,29 +29,29 @@ impl Agent for Worker {
     type Output = Response;
 
     fn create(link: AgentLink<Self>) -> Self {
-        let duration = Duration::from_secs(3);
-        let callback = link.callback(|_| Msg::Updating);
-        let task = IntervalService::spawn(duration, callback);
-        Worker {
-            link,
-            _task: Box::new(task),
-        }
+        Worker { link }
     }
 
-    fn update(&mut self, msg: Self::Message) {
-        match msg {
-            Msg::Updating => {
-                info!("Tick...");
-            }
-        }
-    }
+    fn update(&mut self, msg: Self::Message) {}
 
     fn handle_input(&mut self, msg: Self::Input, who: HandlerId) {
-        info!("Request: {:?}", msg);
         match msg {
-            Request::GetDataFromServer => {
-                // TODO fetch actual data
-                self.link.respond(who, Response::DataFetched);
+            Request::ProcessFile(buf) => {
+                let params = ComputeParameters::builder()
+                    .ksizes(vec![21])
+                    .num_hashes(0)
+                    .scaled(2000)
+                    .build();
+                let mut sig = Signature::from_params(&params);
+
+                let mut parser = parse_fastx_reader(&buf[..]).unwrap();
+                while let Some(record) = parser.next() {
+                    let record = record.unwrap();
+                    let norm_seq = record.normalize(true);
+                    sig.add_sequence(&norm_seq, true).unwrap();
+                }
+                let json = serde_json::to_vec(&[&sig]).unwrap();
+                self.link.respond(who, Response::Signature(json));
             }
         }
     }

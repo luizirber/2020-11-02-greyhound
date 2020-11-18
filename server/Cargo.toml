@@ -11,8 +11,7 @@ tide = "0.14.0"
 tide-compress = "0.7.0"
 serde = "1.0"
 async-std = { version = "1.6.0", features = ["attributes"] }
-greyhound-core = { path = "../core" }
-sourmash = "0.10.0"
+sourmash = { git = "https://github.com/dib-lab/sourmash.git", branch = "greyhound", features = ["experimental"]}
 log = "0.4.8"
 thiserror = "1.0"
 structopt = "0.3.15"

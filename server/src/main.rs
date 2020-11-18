@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use greyhound_core::{GatherResult, RevIndex};
+use sourmash::index::greyhound::{GatherResult, RevIndex};
 use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::{max_hash_for_scaled, KmerMinHash};
 use sourmash::sketch::Sketch;
