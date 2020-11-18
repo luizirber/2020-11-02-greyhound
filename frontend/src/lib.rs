@@ -61,6 +61,7 @@ impl Component for Model {
                     .send(native_worker::Request::ProcessFile(raw_data.content));
             }
             Msg::DataReceived(sig) => {
+                self.tasks.clear();
                 self.sig = Some(Signature::from_reader(&sig[..]).unwrap().swap_remove(0));
                 self.link.send_message(Msg::FetchData(sig));
             }
@@ -81,6 +82,7 @@ impl Component for Model {
             }
             Msg::FetchReady(result) => {
                 // TODO: deal with errors
+                self.ft = None;
                 self.gather_result = result.unwrap();
             }
             Msg::Files(files) => {

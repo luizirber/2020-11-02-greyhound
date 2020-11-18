@@ -21,8 +21,7 @@ wasm-logger = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 niffler = { git = "https://github.com/luizirber/niffler.git", default-features = false, features = ["gz"], branch = "master" }
 needletail = { version = "0.4.0", default-features = false }
-#sourmash = { git = "https://github.com/dib-lab/sourmash.git", branch = "greyhound", features = ["experimental"]}
-sourmash = { path = "../../../sourmash/src/core", features = ["experimental"]}
+sourmash = { git = "https://github.com/dib-lab/sourmash.git", branch = "greyhound", features = ["experimental"]}
 wee_alloc = "0.4.5"
 web-sys = "0.3.45"
 js-sys = "0.3"
