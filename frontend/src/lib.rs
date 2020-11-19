@@ -26,7 +26,7 @@ pub struct Model {
 pub enum Msg {
     SendToWorker(FileData),
     Files(Vec<File>),
-    DataReceived(Vec<u8>),
+    SigFromWorker(Vec<u8>),
     FetchData(Vec<u8>),
     FetchReady(Result<Vec<GatherResult>, Error>),
     Ignore,
@@ -38,7 +38,7 @@ impl Component for Model {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let callback = link.callback(|m: native_worker::Response| match m {
-            native_worker::Response::Signature(sig) => Msg::DataReceived(sig),
+            native_worker::Response::Signature(sig) => Msg::SigFromWorker(sig),
         });
         let job = native_worker::Worker::bridge(callback);
 
@@ -59,9 +59,8 @@ impl Component for Model {
                 self.job
                     .send(native_worker::Request::ProcessFile(raw_data.content));
             }
-            Msg::DataReceived(sig) => {
+            Msg::SigFromWorker(sig) => {
                 self.tasks.clear();
-                self.sig = Some(Signature::from_reader(&sig[..]).unwrap().swap_remove(0));
                 self.link.send_message(Msg::FetchData(sig));
             }
             Msg::FetchData(json) => {
@@ -76,6 +75,8 @@ impl Component for Model {
                         }
                     },
                 );
+                self.sig = Some(Signature::from_reader(&json[..]).unwrap().swap_remove(0));
+
                 let request = Request::post("/gather").body(Ok(json)).unwrap();
                 self.ft = Some(FetchService::fetch_binary(request, callback).unwrap());
             }
@@ -199,8 +200,8 @@ impl Model {
               <table>
                 <thead>
                   <th>{"overlap"}</th>
-                  <th>{"p_query"}</th>
-                  <th>{"p_match"}</th>
+                  <th>{"% query"}</th>
+                  <th>{"% match"}</th>
                   <th>{"name"}</th>
                 </thead>
                 <tbody>
@@ -219,8 +220,8 @@ impl Model {
         html! {
           <tr>
             <td>{bp_fmt(mdata.intersect_bp())}</td>
-            <td>{format!("{:.1}", mdata.f_orig_query())}</td>
-            <td>{format!("{:.1}", mdata.f_match())}</td>
+            <td>{format!("{:.1}", mdata.f_orig_query() * 100.)}</td>
+            <td>{format!("{:.1}", mdata.f_match() * 100.)}</td>
             <td><a href={ format!("{}{}", base_url, acc) }>{name}</a></td>
           </tr>
         }

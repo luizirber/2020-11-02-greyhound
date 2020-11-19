@@ -78,7 +78,7 @@ impl RevIndexState {
                 .max_hash(max_hash)
                 .build();
 
-            RevIndex::new(&sigs, &Sketch::MinHash(template_mh), 0, None, false)
+            RevIndex::new(&sigs, &Sketch::MinHash(template_mh), 0, None, true)
         } else {
             RevIndex::load(path, None).map_err(|e| Error::IndexLoading(format!("{}", e)))?
         };
@@ -158,7 +158,6 @@ async fn main() -> tide::Result<()> {
         Some(scaled),
         Some(ksize),
     )?);
-    app.with(tide_compress::CompressMiddleware::new());
 
     app.at("/gather")
         .post(|mut req: Request<RevIndexState>| async move {
@@ -183,8 +182,10 @@ async fn main() -> tide::Result<()> {
             Ok(Body::from_json(&result)?)
         });
 
-    app.at("/").serve_dir("../frontend/static")?;
-    app.listen("127.0.0.1:8080").await?;
+    app.at("/")
+        .get(|_| async { Ok(Body::from_file("../frontend/static/index.html").await?) })
+        .serve_dir("../frontend/static")?;
+    app.listen("127.0.0.1:8081").await?;
 
     Ok(())
 }
