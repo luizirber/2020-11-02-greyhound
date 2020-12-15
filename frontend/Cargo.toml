@@ -19,7 +19,7 @@ yew = "0.17"
 log = "0.4"
 wasm-logger = "0.2"
 serde = { version = "1.0", features = ["derive"] }
-niffler = { git = "https://github.com/luizirber/niffler.git", default-features = false, features = ["gz"], branch = "master" }
+niffler = { version = "2.3.1", default-features = false, features = ["gz"] }
 needletail = { version = "0.4.0", default-features = false }
 sourmash = { git = "https://github.com/dib-lab/sourmash.git", branch = "greyhound", features = ["experimental"]}
 wee_alloc = "0.4.5"

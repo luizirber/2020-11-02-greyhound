@@ -36,7 +36,7 @@ impl Agent for Worker {
     fn handle_input(&mut self, msg: Self::Input, who: HandlerId) {
         match msg {
             Request::ProcessFile(content) => {
-                let (mut reader, _) = niffler::get_reader(Box::new(&content[..])).unwrap();
+                let (mut reader, _) = niffler::send::get_reader(Box::new(&content[..])).unwrap();
 
                 let params = ComputeParameters::builder()
                     .ksizes(vec![21])
