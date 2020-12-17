@@ -140,7 +140,7 @@ fn gather<P: AsRef<Path>>(
                     if let Sketch::MinHash(mh) = sketch {
                         query = Some(mh.clone());
                         // TODO: deal with mh.size() == 0
-                        let t = threshold_bp / (mh.size() * mh.scaled() as usize);
+                        let t = threshold_bp / (cmp::max(mh.size(), 1) * mh.scaled() as usize);
                         threshold = cmp::min(threshold, t);
                     }
                 }
