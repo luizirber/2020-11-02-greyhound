@@ -212,7 +212,7 @@ fn gather<P: AsRef<Path>>(
 
         let mut out = BufWriter::new(File::create(path).unwrap());
         for m in matches {
-            writeln!(out, "{}", m.get_match().as_str()).unwrap();
+            writeln!(out, "{}", m.filename().as_str()).unwrap();
         }
         info!("Finishing query {:?}", queries_path[i]);
     });
