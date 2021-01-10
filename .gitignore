@@ -1,1 +1,3 @@
 /target
+frontend/static/*.js
+frontend/static/*.wasm

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use greyhound_core::RevIndex;
+use sourmash::index::greyhound::{GatherResult, RevIndex};
 use sourmash::signature::{Signature, SigsTrait};
 use sourmash::sketch::minhash::{max_hash_for_scaled, KmerMinHash};
 use sourmash::sketch::Sketch;
@@ -59,8 +59,6 @@ impl RevIndexState {
         ksize: Option<u8>,
     ) -> Result<Self, Error> {
         let revindex = if from_file {
-            RevIndex::load(path, None).map_err(|e| Error::IndexLoading(format!("{}", e)))?
-        } else {
             let paths = BufReader::new(
                 File::open(path).map_err(|e| Error::IndexLoading(format!("{}", e)))?,
             );
@@ -80,20 +78,23 @@ impl RevIndexState {
                 .max_hash(max_hash)
                 .build();
 
-            RevIndex::new(&sigs, &Sketch::MinHash(template_mh), 0, None, false)
+            RevIndex::new(&sigs, &Sketch::MinHash(template_mh), 0, None, true)
+        } else {
+            RevIndex::load(path, None).map_err(|e| Error::IndexLoading(format!("{}", e)))?
         };
+
         Ok(Self {
             revindex: Arc::new(revindex),
         })
     }
 
-    fn gather(&self, query: Signature) -> Result<Vec<String>, Error> {
+    fn gather(&self, query: Signature) -> Result<Vec<GatherResult>, Error> {
         if let Some(sketch) = query.select_sketch(&self.revindex.template()) {
             if let Sketch::MinHash(mh) = sketch {
                 let counter = self.revindex.counter_for_query(&mh);
                 Ok(self
                     .revindex
-                    .gather(counter, 0)
+                    .gather(counter, 0, mh)
                     .map_err(|e| Error::Gather(format!("{}", e)))?)
             } else {
                 Err(Error::UnsupportedSketch)
@@ -181,6 +182,10 @@ async fn main() -> tide::Result<()> {
             Ok(Body::from_json(&result)?)
         });
 
-    app.listen("127.0.0.1:8080").await?;
+    app.at("/")
+        .get(|_| async { Ok(Body::from_file("../frontend/static/index.html").await?) })
+        .serve_dir("../frontend/static")?;
+    app.listen("127.0.0.1:8081").await?;
+
     Ok(())
 }
